@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.graphics.text.LineBreaker
 import android.os.Build
 import android.text.Editable
+import android.text.Html
 import android.text.InputFilter
 import android.text.InputType
 import android.text.Spannable
@@ -451,16 +452,16 @@ class EnrichedTextInputView :
   }
 
   private fun resolvePastedText(item: ClipData.Item): Spannable? {
-    item.htmlText?.let { htmlText ->
-      val parsed = parseText(htmlText)
-      if (parsed.isNotEmpty()) {
-        return (parsed as? Spannable) ?: SpannableString(parsed)
+    item.text?.let { text ->
+      if (text.isNotEmpty()) {
+        return SpannableString(text.toString())
       }
     }
 
-    item.text?.let { text ->
-      if (text.isNotEmpty()) {
-        return SpannableString(text)
+    item.htmlText?.let { htmlText ->
+      val plainText = Html.fromHtml(htmlText, Html.FROM_HTML_MODE_LEGACY).toString()
+      if (plainText.isNotEmpty()) {
+        return SpannableString(plainText)
       }
     }
 
