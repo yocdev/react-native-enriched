@@ -407,21 +407,7 @@ class EnrichedTextInputView :
     val end = selectionEnd.coerceAtLeast(0)
     val lengthBefore = currentText.length
 
-    val pastedSpannable: Spannable =
-      when {
-        item.htmlText != null -> {
-          val parsed = parseText(item.htmlText)
-          (parsed as? Spannable) ?: return
-        }
-
-        item.text != null -> {
-          SpannableString(item.text.toString())
-        }
-
-        else -> {
-          return
-        }
-      }
+    val pastedSpannable = resolvePastedText(item) ?: return
 
     val availableLength =
       maxLength?.let { limit ->
@@ -447,6 +433,23 @@ class EnrichedTextInputView :
 
     // Detect links in the newly pasted range
     parametrizedStyles?.detectLinksInRange(updatedText, start.coerceAtMost(pasteEnd), pasteEnd)
+  }
+
+  private fun resolvePastedText(item: ClipData.Item): Spannable? {
+    item.htmlText?.let { htmlText ->
+      val parsed = parseText(htmlText)
+      if (parsed.isNotEmpty()) {
+        return (parsed as? Spannable) ?: SpannableString(parsed)
+      }
+    }
+
+    item.text?.let { text ->
+      if (text.isNotEmpty()) {
+        return SpannableString(text)
+      }
+    }
+
+    return null
   }
 
   fun requestFocusProgrammatically() {
