@@ -357,10 +357,38 @@ class EnrichedTextInputView :
             }
 
             emitOnMaxLengthExceededEvent(value)
-            ""
+            if (remaining <= 0) {
+              return@InputFilter ""
+            }
+
+            val acceptedEnd = safePrefixEnd(source, start, start + remaining)
+            source.subSequence(start, acceptedEnd)
           },
         )
       }
+
+    val currentText = text
+    if (value != null && currentText != null && currentText.length > value) {
+      val acceptedEnd = safePrefixEnd(currentText, 0, value)
+      setValue(currentText.subSequence(0, acceptedEnd), false)
+    }
+  }
+
+  private fun safePrefixEnd(
+    value: CharSequence,
+    start: Int,
+    requestedEnd: Int,
+  ): Int {
+    var end = requestedEnd.coerceIn(start, value.length)
+    if (
+      end > start &&
+      end < value.length &&
+      Character.isHighSurrogate(value[end - 1]) &&
+      Character.isLowSurrogate(value[end])
+    ) {
+      end -= 1
+    }
+    return end
   }
 
   private fun emitOnMaxLengthExceededEvent(limit: Int) {
@@ -395,16 +423,30 @@ class EnrichedTextInputView :
         }
       }
 
-    val finalText = currentText.mergeSpannables(start, end, pastedSpannable)
+    val availableLength =
+      maxLength?.let { limit ->
+        (limit - (currentText.length - (end - start))).coerceAtLeast(0)
+      } ?: pastedSpannable.length
+    val acceptedEnd = safePrefixEnd(pastedSpannable, 0, availableLength)
+    val acceptedPaste =
+      if (acceptedEnd < pastedSpannable.length) {
+        maxLength?.let(::emitOnMaxLengthExceededEvent)
+        SpannableString(pastedSpannable.subSequence(0, acceptedEnd))
+      } else {
+        pastedSpannable
+      }
+
+    val finalText = currentText.mergeSpannables(start, end, acceptedPaste)
     setValue(finalText, false)
 
+    val updatedText = text as Spannable
     // replacement-safe: oldLength - removed + inserted
-    val insertedLength = finalText.length - (lengthBefore - (end - start))
-    val pasteEnd = (start + insertedLength).coerceIn(0, finalText.length)
+    val insertedLength = updatedText.length - (lengthBefore - (end - start))
+    val pasteEnd = (start + insertedLength).coerceIn(0, updatedText.length)
     setSelection(pasteEnd)
 
     // Detect links in the newly pasted range
-    parametrizedStyles?.detectLinksInRange(finalText, start.coerceAtMost(pasteEnd), pasteEnd)
+    parametrizedStyles?.detectLinksInRange(updatedText, start.coerceAtMost(pasteEnd), pasteEnd)
   }
 
   fun requestFocusProgrammatically() {
@@ -449,8 +491,16 @@ class EnrichedTextInputView :
     if (value == null) return
 
     runAsATransaction {
-      val newText = if (shouldParseHtml) parseText(value) else value
-      setText(newText)
+      val parsedText = if (shouldParseHtml) parseText(value) else value
+      val limitedText =
+        maxLength?.let { limit ->
+          if (parsedText.length > limit) {
+            parsedText.subSequence(0, safePrefixEnd(parsedText, 0, limit))
+          } else {
+            parsedText
+          }
+        } ?: parsedText
+      setText(limitedText)
       applyLineSpacing()
 
       observeAsyncImages()

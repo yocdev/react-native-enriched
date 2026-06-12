@@ -58,6 +58,61 @@ using namespace facebook::react;
 
 // MARK: - Component utils
 
+- (NSUInteger)safePrefixLength:(NSString *)value limit:(NSUInteger)limit {
+  NSUInteger prefixLength = MIN(value.length, limit);
+  if (prefixLength > 0 && prefixLength < value.length) {
+    unichar lastCharacter = [value characterAtIndex:prefixLength - 1];
+    unichar nextCharacter = [value characterAtIndex:prefixLength];
+    BOOL splitsSurrogatePair =
+        lastCharacter >= 0xD800 && lastCharacter <= 0xDBFF &&
+        nextCharacter >= 0xDC00 && nextCharacter <= 0xDFFF;
+    if (splitsSurrogatePair) {
+      prefixLength -= 1;
+    }
+  }
+  return prefixLength;
+}
+
+- (void)truncateTextToMaxLength {
+  if (maxLength <= 0 || textView.textStorage.string.length <= maxLength) {
+    return;
+  }
+
+  NSString *currentText = textView.textStorage.string;
+  NSUInteger prefixLength = [self safePrefixLength:currentText
+                                             limit:(NSUInteger)maxLength];
+  [textView.textStorage
+      deleteCharactersInRange:NSMakeRange(prefixLength,
+                                          currentText.length - prefixLength)];
+}
+
+- (BOOL)truncateInsertedTextFromRange:(NSRange)range
+                       originalLength:(NSUInteger)originalLength {
+  if (maxLength <= 0) {
+    return NO;
+  }
+
+  NSUInteger existingLength = originalLength - range.length;
+  NSUInteger availableLength =
+      existingLength < maxLength ? maxLength - existingLength : 0;
+  NSUInteger insertedLength =
+      textView.textStorage.string.length - existingLength;
+  if (insertedLength <= availableLength) {
+    return NO;
+  }
+
+  NSString *insertedText = [textView.textStorage.string
+      substringWithRange:NSMakeRange(range.location, insertedLength)];
+  NSUInteger acceptedLength = [self safePrefixLength:insertedText
+                                               limit:availableLength];
+  [textView.textStorage
+      deleteCharactersInRange:NSMakeRange(range.location + acceptedLength,
+                                          insertedLength - acceptedLength)];
+  textView.selectedRange = NSMakeRange(range.location + acceptedLength, 0);
+  [self emitOnMaxLengthExceededEvent:maxLength];
+  return YES;
+}
+
 + (ComponentDescriptorProvider)componentDescriptorProvider {
   return concreteComponentDescriptorProvider<
       EnrichedTextInputViewComponentDescriptor>();
@@ -784,6 +839,7 @@ Class<RCTComponentViewProtocol> EnrichedTextInputViewCls(void) {
 
   if (newViewProps.maxLength != oldViewProps.maxLength) {
     maxLength = newViewProps.maxLength;
+    [self truncateTextToMaxLength];
   }
 
   // useHtmlNormalizer
@@ -806,6 +862,7 @@ Class<RCTComponentViewProtocol> EnrichedTextInputViewCls(void) {
       // we've got some seemingly proper html
       [parser replaceWholeFromHtml:initiallyProcessedHtml];
     }
+    [self truncateTextToMaxLength];
     textView.selectedRange = NSRange(textView.textStorage.string.length, 0);
   }
 
@@ -1374,6 +1431,7 @@ Class<RCTComponentViewProtocol> EnrichedTextInputViewCls(void) {
     [parser replaceWholeFromHtml:initiallyProcessedHtml];
   }
 
+  [self truncateTextToMaxLength];
   // set selectedRange and check for changes
   textView.selectedRange = NSRange(textView.textStorage.string.length, 0);
   [self anyTextMayHaveBeenModified];
@@ -2005,12 +2063,26 @@ Class<RCTComponentViewProtocol> EnrichedTextInputViewCls(void) {
 - (bool)textView:(UITextView *)textView
     shouldChangeTextInRange:(NSRange)range
             replacementText:(NSString *)text {
-  if (maxLength > 0) {
+  if (maxLength > 0 && text.length > 0) {
     NSString *currentText = textView.textStorage.string ?: @"";
     NSUInteger proposedLength = currentText.length - range.length + text.length;
 
     if (proposedLength > maxLength) {
       [self emitOnMaxLengthExceededEvent:maxLength];
+
+      NSInteger availableLength =
+          maxLength - (NSInteger)(currentText.length - range.length);
+      if (availableLength > 0) {
+        NSUInteger acceptedLength = [self
+            safePrefixLength:text
+                       limit:MIN((NSUInteger)availableLength, text.length)];
+        NSString *acceptedText = [text substringToIndex:acceptedLength];
+        [textView.textStorage replaceCharactersInRange:range
+                                            withString:acceptedText];
+        textView.selectedRange =
+            NSMakeRange(range.location + acceptedLength, 0);
+        [self anyTextMayHaveBeenModified];
+      }
       return NO;
     }
   }

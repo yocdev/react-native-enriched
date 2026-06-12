@@ -44,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)emitOnMentionEvent:(NSString *)indicator text:(nullable NSString *)text;
 - (void)emitOnPasteImagesEvent:(NSArray<NSDictionary *> *)images;
 - (void)emitOnMaxLengthExceededEvent:(NSInteger)maxLength;
+- (BOOL)truncateInsertedTextFromRange:(NSRange)range
+                       originalLength:(NSUInteger)originalLength;
 - (void)anyTextMayHaveBeenModified;
 - (void)scheduleRelayoutIfNeeded;
 - (BOOL)handleStyleBlocksAndConflicts:(StyleType)type range:(NSRange)range;

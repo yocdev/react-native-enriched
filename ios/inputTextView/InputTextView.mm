@@ -65,6 +65,7 @@
   UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
   NSArray<NSString *> *pasteboardTypes = pasteboard.pasteboardTypes;
   NSRange currentRange = typedInput->textView.selectedRange;
+  NSUInteger originalLength = typedInput->textView.textStorage.string.length;
 
   // Check the pasteboard for supported image formats. If found, save them to
   // temporary storage then emit the 'onPasteImages' event and stop processing
@@ -163,6 +164,8 @@
                                 input:typedInput];
   }
 
+  [typedInput truncateInsertedTextFromRange:currentRange
+                             originalLength:originalLength];
   [typedInput anyTextMayHaveBeenModified];
 }
 
