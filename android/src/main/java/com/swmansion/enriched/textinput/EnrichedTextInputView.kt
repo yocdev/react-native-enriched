@@ -322,6 +322,13 @@ class EnrichedTextInputView :
         handleCustomCopy()
         return true
       }
+
+      android.R.id.paste,
+      android.R.id.pasteAsPlainText,
+      -> {
+        handleCustomPaste()
+        return true
+      }
     }
     return super.onTextContextMenuItem(id)
   }
@@ -339,6 +346,14 @@ class EnrichedTextInputView :
       val clip = ClipData.newHtmlText(CLIPBOARD_TAG, selectedText, selectedHtml)
       clipboard.setPrimaryClip(clip)
     }
+  }
+
+  private fun handleCustomPaste() {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = clipboard.primaryClip ?: return
+    if (clip.itemCount <= 0) return
+
+    handleTextPaste(clip.getItemAt(0))
   }
 
   fun setMaxLength(value: Int?) {
